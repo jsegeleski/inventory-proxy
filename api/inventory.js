@@ -19,19 +19,22 @@ module.exports = async (req, res) => {
   }
 
   const input = query.trim();
-
-  // 💡 SKU detection
   const isLikelySKU = /^[a-zA-Z0-9\-]+$/.test(input) && input.length <= 20;
 
-  // 🧠 Build Shopify query string
   let shopifyQuery = '';
+
   if (isLikelySKU) {
     shopifyQuery = `sku:${input}`;
   } else {
-    const words = input.split(/\s+/).map(w => `title:*${w.replace(/"/g, '\\"')}*`);
+    const words = input
+      .replace(/[’']/g, '') // strip apostrophes like "men's" → "mens"
+      .split(/\s+/)
+      .map(w => `title:*${w}*`);
+
     shopifyQuery = words.join(' AND ');
   }
 
+  // Add `status:any` so it includes draft products too
   const gqlQuery = {
     query: `
       {
@@ -97,6 +100,7 @@ module.exports = async (req, res) => {
         res.status(200).json(products);
       } catch (err) {
         console.error("Parsing error:", err);
+        console.log("Raw response:", body);
         res.status(500).json({ error: 'Error parsing Shopify response' });
       }
     });
