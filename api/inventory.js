@@ -9,7 +9,7 @@ module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
   if (req.method === "OPTIONS") {
-    return res.status(200).end(); // for CORS preflight
+    return res.status(200).end();
   }
 
   const { query } = req.query;
@@ -18,10 +18,24 @@ module.exports = async (req, res) => {
     return res.status(400).json({ error: 'Missing query param' });
   }
 
+  const input = query.trim();
+
+  // 💡 SKU detection
+  const isLikelySKU = /^[a-zA-Z0-9\-]+$/.test(input) && input.length <= 20;
+
+  // 🧠 Build Shopify query string
+  let shopifyQuery = '';
+  if (isLikelySKU) {
+    shopifyQuery = `sku:${input}`;
+  } else {
+    const words = input.split(/\s+/).map(w => `title:*${w.replace(/"/g, '\\"')}*`);
+    shopifyQuery = words.join(' AND ');
+  }
+
   const gqlQuery = {
     query: `
       {
-        products(first: 10, query: "${query}") {
+        products(first: 10, query: "${shopifyQuery} status:any") {
           edges {
             node {
               title
