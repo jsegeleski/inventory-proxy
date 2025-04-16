@@ -1,19 +1,23 @@
 const https = require('https');
+const readline = require('readline');
 
-module.exports = async (req, res) => {
-  const { query } = req.query;
+const SHOP = 'monodsports-1394.myshopify.com';
+const TOKEN = process.env.SHOPIFY_TOKEN;
 
-  if (!query) {
-    return res.status(400).json({ error: 'Missing query param' });
-  }
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout
+});
 
-  const SHOPIFY_DOMAIN = process.env.SHOPIFY_DOMAIN;
-  const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN;
+rl.question('🔍 Enter a product name or barcode: ', function (searchInput) {
+  searchProduct(searchInput);
+});
 
-  const graphqlQuery = {
+function searchProduct(searchInput) {
+  const query = {
     query: `
       {
-        products(first: 5, query: "${query}") {
+        products(first: 10, query: "${searchInput}") {
           edges {
             node {
               title
@@ -38,36 +42,58 @@ module.exports = async (req, res) => {
   };
 
   const options = {
-    hostname: SHOPIFY_DOMAIN,
+    hostname: SHOP,
     path: '/admin/api/2023-10/graphql.json',
     method: 'POST',
     headers: {
-      'X-Shopify-Access-Token': SHOPIFY_TOKEN,
-      'Content-Type': 'application/json'
+      'X-Shopify-Access-Token': TOKEN,
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(JSON.stringify(query))
     }
   };
 
-  const shopifyReq = https.request(options, shopifyRes => {
-    let data = '';
+  const req = https.request(options, res => {
+    let body = '';
 
-    shopifyRes.on('data', chunk => {
-      data += chunk;
+    res.on('data', chunk => {
+      body += chunk;
     });
 
-    shopifyRes.on('end', () => {
+    res.on('end', () => {
       try {
-        const result = JSON.parse(data);
-        return res.status(200).json(result.data.products.edges);
+        const result = JSON.parse(body);
+        const products = result.data.products.edges;
+
+        if (products.length === 0) {
+          console.log(`❌ No products found matching "${searchInput}"`);
+        } else {
+          products.forEach(({ node: product }) => {
+            console.log(`\n🔹 ${product.title}`);
+            if (product.featuredImage) {
+              console.log(`🖼️ Image: ${product.featuredImage.originalSrc}`);
+            }
+
+            product.variants.edges.forEach(({ node: variant }) => {
+              console.log(`  - Variant: ${variant.title}`);
+              console.log(`    SKU: ${variant.sku}`);
+              console.log(`    Price: $${variant.price}`);
+              console.log(`    📦 Inventory: ${variant.inventoryQuantity} units`);
+            });
+          });
+        }
       } catch (err) {
-        return res.status(500).json({ error: 'Parsing error', raw: data });
+        console.error('Failed to parse response:', err);
+        console.log('Raw response:', body);
+      } finally {
+        rl.close();
       }
     });
   });
 
-  shopifyReq.on('error', error => {
-    return res.status(500).json({ error: error.message });
+  req.on('error', error => {
+    console.error('Request error:', error);
   });
 
-  shopifyReq.write(JSON.stringify(graphqlQuery));
-  shopifyReq.end();
-};
+  req.write(JSON.stringify(query));
+  req.end();
+}
