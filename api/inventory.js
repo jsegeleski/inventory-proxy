@@ -19,7 +19,7 @@ module.exports = async (req, res) => {
   }
 
   const gqlQuery = {
-    query: 
+    query: `
       {
         products(first: 10, query: "${query}") {
           edges {
@@ -43,7 +43,7 @@ module.exports = async (req, res) => {
           }
         }
       }
-    
+    `
   };
 
   const options = {
