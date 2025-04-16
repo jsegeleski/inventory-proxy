@@ -21,7 +21,7 @@ module.exports = async (req, res) => {
   const gqlQuery = {
     query: `
       {
-        products(first: 50, query: "${query}") {
+        products(first: 75, query: "${query}") {
           edges {
             node {
               title
@@ -29,7 +29,7 @@ module.exports = async (req, res) => {
               featuredImage {
                 originalSrc
               }
-              variants(first: 50) {
+              variants(first: 75) {
                 edges {
                   node {
                     title
