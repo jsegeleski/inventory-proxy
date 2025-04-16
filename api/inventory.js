@@ -1,19 +1,27 @@
 const https = require('https');
 
+const SHOP = 'monodsports-1394.myshopify.com';
+const TOKEN = process.env.SHOPIFY_TOKEN;
+
 module.exports = async (req, res) => {
-  const SHOP = 'monodsports-1394.myshopify.com';
-  const TOKEN = process.env.SHOPIFY_TOKEN;
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  const searchInput = req.query.query;
-
-  if (!searchInput) {
-    return res.status(400).json({ error: 'Missing query parameter' });
+  if (req.method === "OPTIONS") {
+    return res.status(200).end(); // for CORS preflight
   }
 
-  const query = {
+  const { query } = req.query;
+
+  if (!query) {
+    return res.status(400).json({ error: 'Missing query param' });
+  }
+
+  const gqlQuery = {
     query: `
       {
-        products(first: 10, query: "${searchInput}") {
+        products(first: 10, query: "${query}") {
           edges {
             node {
               title
@@ -44,7 +52,7 @@ module.exports = async (req, res) => {
     headers: {
       'X-Shopify-Access-Token': TOKEN,
       'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(JSON.stringify(query))
+      'Content-Length': Buffer.byteLength(JSON.stringify(gqlQuery))
     }
   };
 
@@ -58,36 +66,30 @@ module.exports = async (req, res) => {
     shopifyRes.on('end', () => {
       try {
         const result = JSON.parse(body);
-        const products = result.data.products.edges;
-
-        if (!products || products.length === 0) {
-          return res.status(200).json({ message: `No products found for "${searchInput}"` });
-        }
-
-        const formatted = products.map(({ node: product }) => ({
-          title: product.title,
-          image: product.featuredImage?.originalSrc || null,
-          variants: product.variants.edges.map(({ node: variant }) => ({
-            title: variant.title,
-            sku: variant.sku,
-            price: variant.price,
-            inventoryQuantity: variant.inventoryQuantity
+        const products = result.data.products.edges.map(({ node }) => ({
+          title: node.title,
+          image: node.featuredImage?.originalSrc || null,
+          variants: node.variants.edges.map(({ node: v }) => ({
+            title: v.title,
+            sku: v.sku,
+            price: v.price,
+            inventoryQuantity: v.inventoryQuantity
           }))
         }));
 
-        res.status(200).json(formatted);
+        res.status(200).json(products);
       } catch (err) {
-        console.error('Failed to parse response:', err);
-        res.status(500).json({ error: 'Error parsing Shopify response', raw: body });
+        console.error("Parsing error:", err);
+        res.status(500).json({ error: 'Error parsing Shopify response' });
       }
     });
   });
 
-  shopifyReq.on('error', err => {
-    console.error('Request error:', err);
-    res.status(500).json({ error: 'Shopify API request failed' });
+  shopifyReq.on('error', error => {
+    console.error('Request error:', error);
+    res.status(500).json({ error: 'Request to Shopify failed' });
   });
 
-  shopifyReq.write(JSON.stringify(query));
+  shopifyReq.write(JSON.stringify(gqlQuery));
   shopifyReq.end();
 };
