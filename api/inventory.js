@@ -1,19 +1,15 @@
 const https = require('https');
-const readline = require('readline');
 
-const SHOP = 'monodsports-1394.myshopify.com';
-const TOKEN = process.env.SHOPIFY_TOKEN;
+module.exports = async (req, res) => {
+  const SHOP = 'monodsports-1394.myshopify.com';
+  const TOKEN = process.env.SHOPIFY_TOKEN;
 
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout
-});
+  const searchInput = req.query.query;
 
-rl.question('🔍 Enter a product name or barcode: ', function (searchInput) {
-  searchProduct(searchInput);
-});
+  if (!searchInput) {
+    return res.status(400).json({ error: 'Missing query parameter' });
+  }
 
-function searchProduct(searchInput) {
   const query = {
     query: `
       {
@@ -52,48 +48,46 @@ function searchProduct(searchInput) {
     }
   };
 
-  const req = https.request(options, res => {
+  const shopifyReq = https.request(options, shopifyRes => {
     let body = '';
 
-    res.on('data', chunk => {
+    shopifyRes.on('data', chunk => {
       body += chunk;
     });
 
-    res.on('end', () => {
+    shopifyRes.on('end', () => {
       try {
         const result = JSON.parse(body);
         const products = result.data.products.edges;
 
-        if (products.length === 0) {
-          console.log(`❌ No products found matching "${searchInput}"`);
-        } else {
-          products.forEach(({ node: product }) => {
-            console.log(`\n🔹 ${product.title}`);
-            if (product.featuredImage) {
-              console.log(`🖼️ Image: ${product.featuredImage.originalSrc}`);
-            }
-
-            product.variants.edges.forEach(({ node: variant }) => {
-              console.log(`  - Variant: ${variant.title}`);
-              console.log(`    SKU: ${variant.sku}`);
-              console.log(`    Price: $${variant.price}`);
-              console.log(`    📦 Inventory: ${variant.inventoryQuantity} units`);
-            });
-          });
+        if (!products || products.length === 0) {
+          return res.status(200).json({ message: `No products found for "${searchInput}"` });
         }
+
+        const formatted = products.map(({ node: product }) => ({
+          title: product.title,
+          image: product.featuredImage?.originalSrc || null,
+          variants: product.variants.edges.map(({ node: variant }) => ({
+            title: variant.title,
+            sku: variant.sku,
+            price: variant.price,
+            inventoryQuantity: variant.inventoryQuantity
+          }))
+        }));
+
+        res.status(200).json(formatted);
       } catch (err) {
         console.error('Failed to parse response:', err);
-        console.log('Raw response:', body);
-      } finally {
-        rl.close();
+        res.status(500).json({ error: 'Error parsing Shopify response', raw: body });
       }
     });
   });
 
-  req.on('error', error => {
-    console.error('Request error:', error);
+  shopifyReq.on('error', err => {
+    console.error('Request error:', err);
+    res.status(500).json({ error: 'Shopify API request failed' });
   });
 
-  req.write(JSON.stringify(query));
-  req.end();
-}
+  shopifyReq.write(JSON.stringify(query));
+  shopifyReq.end();
+};
