@@ -20,30 +20,30 @@ module.exports = async (req, res) => {
 
   const gqlQuery = {
     query: `
-  {
-    products(first: 10, query: "${searchInput}") {
-      edges {
-        node {
-          title
-          handle
-          featuredImage {
-            originalSrc
-          }
-          variants(first: 10) {
-            edges {
-              node {
-                title
-                sku
-                price
-                inventoryQuantity
+      {
+        products(first: 10, query: "${query}") {
+          edges {
+            node {
+              title
+              handle
+              featuredImage {
+                originalSrc
+              }
+              variants(first: 10) {
+                edges {
+                  node {
+                    title
+                    sku
+                    price
+                    inventoryQuantity
+                  }
+                }
               }
             }
           }
         }
       }
-    }
-  }
-`
+    `
   };
 
   const options = {
@@ -67,10 +67,11 @@ module.exports = async (req, res) => {
     shopifyRes.on('end', () => {
       try {
         const result = JSON.parse(body);
+
         const products = result.data.products.edges.map(({ node }) => ({
           title: node.title,
           image: node.featuredImage?.originalSrc || null,
-          handle: product.handle,
+          handle: node.handle,
           variants: node.variants.edges.map(({ node: v }) => ({
             title: v.title,
             sku: v.sku,
