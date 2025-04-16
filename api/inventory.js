@@ -9,7 +9,7 @@ module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
   if (req.method === "OPTIONS") {
-    return res.status(200).end();
+    return res.status(200).end(); // for CORS preflight
   }
 
   const { query } = req.query;
@@ -18,27 +18,10 @@ module.exports = async (req, res) => {
     return res.status(400).json({ error: 'Missing query param' });
   }
 
-  const input = query.trim();
-  const isLikelySKU = /^[a-zA-Z0-9\-]+$/.test(input) && input.length <= 20;
-
-  let shopifyQuery = '';
-
-  if (isLikelySKU) {
-    shopifyQuery = `sku:${input}`;
-  } else {
-    const words = input
-      .replace(/[’']/g, '') // strip apostrophes like "men's" → "mens"
-      .split(/\s+/)
-      .map(w => `title:*${w}*`);
-
-    shopifyQuery = words.join(' AND ');
-  }
-
-  // Add `status:any` so it includes draft products too
   const gqlQuery = {
-    query: `
+    query: 
       {
-        products(first: 10, query: "${shopifyQuery} status:any") {
+        products(first: 10, query: "${query}") {
           edges {
             node {
               title
@@ -60,7 +43,7 @@ module.exports = async (req, res) => {
           }
         }
       }
-    `
+    
   };
 
   const options = {
@@ -100,7 +83,6 @@ module.exports = async (req, res) => {
         res.status(200).json(products);
       } catch (err) {
         console.error("Parsing error:", err);
-        console.log("Raw response:", body);
         res.status(500).json({ error: 'Error parsing Shopify response' });
       }
     });
